@@ -13,6 +13,14 @@ VSCODE_EXT_DIR="${VSCODE_EXTENSIONS_DIR:-$HOME/.vscode/extensions}"
 die() { echo "ERROR: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
 
+# Linux fork preflight: fail fast with apt hints instead of dying mid-install.
+need node; need python3; need git
+command -v npm >/dev/null 2>&1 || command -v pnpm >/dev/null 2>&1 || die "need npm or pnpm (npm i -g pnpm)"
+if ! command -v xclip >/dev/null 2>&1 && ! command -v wl-paste >/dev/null 2>&1; then
+  echo "WARN: no xclip (X11) and no wl-paste (Wayland) — clipboard image / file paste will not work." >&2
+  echo "WARN: sudo apt install xclip   # X11   |   sudo apt install wl-clipboard   # Wayland" >&2
+fi
+
 # Write EXT_ID into argv.json enable-proposed-api (keeps comments / other ids).
 # No-op if already listed.
 merge_argv() {
@@ -290,12 +298,7 @@ reset_shadow_store() {
 # literal keeps its quote characters and never matches). Backs the file up and
 # keeps the surviving rows verbatim, so the user's formatting is untouched.
 prune_stale_dsh_keybindings() {
-  local kb=""
-  case "$(uname -s)" in
-    Darwin) kb="$HOME/Library/Application Support/Code/User/keybindings.json" ;;
-    Linux)  kb="${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/keybindings.json" ;;
-    MING*|MSYS*|CYGWIN*) [ -n "${APPDATA:-}" ] && kb="$APPDATA/Code/User/keybindings.json" ;;
-  esac
+  local kb="${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/keybindings.json"
   if [ -z "$kb" ] || [ ! -f "$kb" ]; then
     echo "keybindings.json not found — no stale dsh rows to prune"
     return 0
@@ -447,30 +450,18 @@ prune_stale_dsh_keybindings
 echo "=== [3/4] Enable editorInsets + CDP port in VS Code argv.json ==="
 merge_argv "$HOME/.vscode/argv.json"
 merge_cdp_port "$HOME/.vscode/argv.json"
-case "$(uname -s)" in
-  Darwin)
-    merge_argv "$HOME/Library/Application Support/Code/argv.json"
-    merge_cdp_port "$HOME/Library/Application Support/Code/argv.json"
-    if [ -d "$HOME/Library/Application Support/Code - Insiders" ]; then
-      merge_argv "$HOME/Library/Application Support/Code - Insiders/argv.json"
-      merge_cdp_port "$HOME/Library/Application Support/Code - Insiders/argv.json"
-    fi
-    ;;
-  Linux)
-    merge_argv "${XDG_CONFIG_HOME:-$HOME/.config}/Code/argv.json"
-    merge_cdp_port "${XDG_CONFIG_HOME:-$HOME/.config}/Code/argv.json"
-    ;;
-esac
+merge_argv "${XDG_CONFIG_HOME:-$HOME/.config}/Code/argv.json"
+merge_cdp_port "${XDG_CONFIG_HOME:-$HOME/.config}/Code/argv.json"
 
 echo "=== [4/4] Reset dsh-review shadow git ==="
 reset_shadow_store
 
 echo "=== Done ==="
-echo "1. Completely quit VS Code (Cmd+Q), then reopen from Dock."
+echo "1. Completely quit VS Code (Ctrl+Q — closing windows is NOT enough), then reopen."
 echo "2. Restart dsh web (or use the sidebar Restart button)."
 echo "3. Shadow store was wiped (repo.git + pending/*.json). Unreviewed diffs are gone."
 echo "3b. 元素批注(Shift+Enter→dsh)需要 CDP：已把 \"remote-debugging-port\": \"9223\" 写进 argv.json，"
-echo "    Cmd+Q 重启后，以后照正常方式（Dock/图标）启动即可，无需命令行参数。"
+echo "    Ctrl+Q 重启后，以后照正常方式（图标/任务栏）启动即可，无需命令行参数。"
 echo "    验证: curl -s http://127.0.0.1:9223/json/list ；命令面板 dsh: 元素批注状态"
 echo "editorInsets argv.json id: $EXT_ID"
 echo "dsh-review is copied into ~/.dsh/profiles/web (source folder can be deleted)."
